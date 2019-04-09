@@ -308,7 +308,7 @@ static unsigned int LMP90100_DRDY (void)
 
 	if (DRDY_AUX_IS_HIGH() && CS_AUX_IS_LOW())
 	{
-		//printf("DRDY high CS low\n"); 
+		//printf("DRDY high CS low\n");
 		ctr++;
 	}
 	if (DRDY_AUX_IS_HIGH() && CS_AUX_IS_HIGH() && (ctr >= 1))
@@ -940,7 +940,7 @@ static void ADS1256_DispVoltage(void){
 	}
 
 	Vin = (volt[7] - volt[6]) / 8 * ((1000 + 100000) / 1000); /* uV  */
-	printf("ad7=%d ad6=%d\n",volt[7],volt[6]);
+	
 	if (Vin < 0){
 		Vin = -Vin;
 		printf("-%ld.%03ld %03ld V \n", Vin / 1000000, (Vin%1000000)/1000, Vin%1000);
@@ -949,24 +949,6 @@ static void ADS1256_DispVoltage(void){
 	else{
 		printf("%ld.%03ld %03ld V \n", Vin / 1000000, (Vin%1000000)/1000, Vin%1000);
 		storeVoltage(Vin);
-	}
-}
-
-/*
-*********************************************************************************************************
-*	name: switchDataMode
-*	function:  Switches data mode between mode0 and mode1
-*	parameter: mode: current set data mode
-*
-*	The return value:  NULL
-*********************************************************************************************************
-*/
-void switchDataMode(int mode){
-	if(mode == 1){
-		bcm2835_spi_setDataMode(BCM2835_SPI_MODE0); //clock mode for LMP90100
-	}
-	else{
-		bcm2835_spi_setDataMode(BCM2835_SPI_MODE1); //clock mode for ADS1256
 	}
 }
 
@@ -988,7 +970,7 @@ int  main()
 	bcm2835_spi_begin();
 	bcm2835_aux_spi_begin();
 	bcm2835_spi_setBitOrder(BCM2835_SPI_BIT_ORDER_MSBFIRST);   //default
-	bcm2835_spi_setDataMode(BCM2835_SPI_MODE0);                //clock mode for LMP90100
+	bcm2835_spi_setDataMode(BCM2835_SPI_MODE1);
 	bcm2835_spi_setClockDivider(BCM2835_SPI_CLOCK_DIVIDER_8192);//default
 	bcm2835_aux_spi_setClockDivider(BCM2835_SPI_CLOCK_DIVIDER_2048);//default
 
@@ -1007,18 +989,11 @@ int  main()
 
 	while(1)
 	{
-		//printf("Looping\n");
 		LMP90100_DispTemp();
 		bsp_DelayUS(1000000);
-		//switch to ADS1256 data mode
-		mode = 1;
-		switchDataMode(mode);
 
 		ADS1256_DispVoltage();
 		bsp_DelayUS(1000000);
-		//switch back to LMP90100 data mode
-		mode = 0;
-		switchDataMode(mode);
 	}
 
 	bcm2835_aux_spi_end();
