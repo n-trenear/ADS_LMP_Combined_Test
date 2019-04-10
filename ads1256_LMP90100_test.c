@@ -642,13 +642,13 @@ uint8_t ADS1256_ReadChipID(void){
 
 /*
 *********************************************************************************************************
-*	name: ADS1256_SetChannal
+*	name: ADS1256_SetChannel
 *	function: Configuration channel number
 *	parameter:  _ch:  channel number  0--7
 *	The return value: NULL
 *********************************************************************************************************
 */
-static void ADS1256_SetChannal(uint8_t _ch){
+static void ADS1256_SetChannel(uint8_t _ch){
 	/*
 	Bits 7-4 PSEL3, PSEL2, PSEL1, PSEL0: Positive Input Channel (AINP) Select
 		0000 = AIN0 (default)
@@ -683,13 +683,13 @@ static void ADS1256_SetChannal(uint8_t _ch){
 
 /*
 *********************************************************************************************************
-*	name: ADS1256_SetDiffChannal
+*	name: ADS1256_SetDiffChannel
 *	function: The configuration difference channel
 *	parameter:  _ch:  channel number  0--3
 *	The return value:  four high status register
 *********************************************************************************************************
 */
-static void ADS1256_SetDiffChannal(uint8_t _ch){
+static void ADS1256_SetDiffChannel(uint8_t _ch){
 	/*
 	Bits 7-4 PSEL3, PSEL2, PSEL1, PSEL0: Positive Input Channel (AINP) Select
 		0000 = AIN0 (default)
@@ -805,7 +805,7 @@ void ADS1256_ISR(void){
 	if (g_tADS1256.ScanMode == 0)	/*  0  Single-ended input  8 channel�� 1 Differential input  4 channe */
 	{
 
-		ADS1256_SetChannal(g_tADS1256.Channel);	/*Switch channel mode */
+		ADS1256_SetChannel(g_tADS1256.Channel);	/*Switch channel mode */
 		bsp_DelayUS(5);
 
 		ADS1256_WriteCmd(CMD_SYNC);
@@ -831,7 +831,7 @@ void ADS1256_ISR(void){
 	else	/*DiffChannal*/
 	{
 
-		ADS1256_SetDiffChannal(g_tADS1256.Channel);	/* change DiffChannal */
+		ADS1256_SetDiffChannel(g_tADS1256.Channel);	/* change DiffChannel */
 		bsp_DelayUS(5);
 
 		ADS1256_WriteCmd(CMD_SYNC);
@@ -923,24 +923,19 @@ void storeVoltage(int32_t Vin){
 *********************************************************************************************************
 */
 static void ADS1256_DispVoltage(void){
-	uint8_t id;
-	int32_t adc[8];
-	int32_t volt[8];
+	int32_t adc;
+	int32_t volt;
 	int32_t Vin;
-	uint8_t i;
-	uint8_t ch_num = 8; //number of channels
+
 	uint8_t buf[3];
 
 	while((ADS1256_Scan() == 0));
 
-	for (i = 0; i < ch_num; i++)
-	{
-		adc[i] = ADS1256_GetAdc(i); //+6 to just read the last two channels
-		volt[i] = (adc[i] * 100) / 167;
-	}
+	adc = ADS1256_GetAdc(2); //+6 to just read the last two channels
+	volt = (adc * 100) / 167;
 
-	Vin = (volt[7] - volt[6]) / 8 * ((1000 + 100000) / 1000); /* uV  */
-	
+	Vin = volt / 8 * ((1000 + 100000) / 1000); /* uV  */
+
 	if (Vin < 0){
 		Vin = -Vin;
 		printf("-%ld.%03ld %03ld V \n", Vin / 1000000, (Vin%1000000)/1000, Vin%1000);
@@ -963,7 +958,7 @@ static void ADS1256_DispVoltage(void){
 */
 int  main()
 {
-	int mode = 0; //initiallize to LMP90100 data mode
+	int scanMode = 1; // 0 single ended mode : 1 differential mode
   if (!bcm2835_init())
   	return 1;
 
@@ -985,7 +980,7 @@ int  main()
 	bcm2835_gpio_set_pud(DRDY, BCM2835_GPIO_PUD_UP);
 
 	ADS1256_CfgADC(ADS1256_GAIN_1, ADS1256_15SPS);
-	ADS1256_StartScan(0);
+	ADS1256_StartScan(1);
 
 	while(1)
 	{
@@ -996,6 +991,7 @@ int  main()
 		bsp_DelayUS(1000000);
 	}
 
+	bcm2835_spi_end();
 	bcm2835_aux_spi_end();
 	bcm2835_close();
 
