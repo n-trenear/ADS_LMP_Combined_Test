@@ -790,7 +790,7 @@ void ADS1256_ISR(void){
 	}
 	else	/*DiffChannel*/
 	{
-
+		
 		ADS1256_SetDiffChannel(g_tADS1256.Channel);	/* change DiffChannel */
 		bsp_DelayUS(5);
 
@@ -819,16 +819,15 @@ void ADS1256_ISR(void){
 /*
 *********************************************************************************************************
 *	name: ADS1256_Scan
-*	function:
+*	function: 
 *	parameter:NULL
 *	The return value:  1
 *********************************************************************************************************
 */
 uint8_t ADS1256_Scan(void){
-
 	if (DRDY_IS_LOW())
 	{
-		ADS1256_ISR();
+		ADS1256_ISR();		
 		return 1;
 	}
 
@@ -890,15 +889,15 @@ static void ADS1256_DispVoltage(void){
 	int32_t volt[numChannels];
 
 	uint8_t buf[3];
-
+	
 	for(int i = 0; i <= numChannels; i++){
 		while((ADS1256_Scan() == 0));
 	}
-
+	
 	for(int i = 0; i < 2; i++){
-		adc[i] = ADS1256_GetAdc(i+2);
+		adc[i] = ADS1256_GetAdc(i+2); 
 		volt[i] = (adc[i] * 100) / 167;
-
+		
 		Vin = volt[i] / 8 * ((1000 + 100000) / 1000); /* uV */
 		Vin = Vin * 1.0425; //multiply by error factor
 
