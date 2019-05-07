@@ -281,7 +281,7 @@ static unsigned int LMP90100_DRDY (void)
 	int Channel;
 	float Temp_Reading;
 	int result = 0;
-	static int ctr = 0;
+  static int ctr = 0;
 	//printf("LMP90100_DRDY running \n");
 
 	while(!result){
@@ -291,11 +291,11 @@ static unsigned int LMP90100_DRDY (void)
   	if (ctr > 1)
     {
 	//printf("ctr > 1 \n");
-		Temp_Reading = LMP90100_ReadADC();
-		Channel = LMP90100_ReadChannel();
+    	Temp_Reading = LMP90100_ReadADC();
+      Channel = LMP90100_ReadChannel();
       //printf("Ch:%02X Temp: %3.1f \r",Channel,Temp_Reading);
-		printf("Ch:%d Temp: %3.1f \n",Channel,Temp_Reading);
-		storeTemp(Temp_Reading);
+			printf("Ch:%d Temp: %3.1f \n",Channel,Temp_Reading);
+			storeTemp(Temp_Reading);
       ctr = 0;
       result = 1;
     }
@@ -323,7 +323,7 @@ static unsigned int LMP90100_DRDY (void)
 
 /*
 *********************************************************************************************************
-*	name: LMP90100_Setup
+*	name: LMP90100_DRDY
 *	function: Detect ADC ready pulse on MISO line and initate ADC read and ADC channel number read
 *	parameter: NULL
 *
@@ -357,7 +357,7 @@ static void LMP90100_Setup(void){
 
 /*
 *********************************************************************************************************
-*	name: LMP90100_DispTemp
+*	name: LMP90100_DRDY
 *	function: Detect ADC ready pulse on MISO line and initate ADC read and ADC channel number read
 *	parameter: NULL
 *
@@ -589,6 +589,29 @@ static void ADS1256_WriteReg(uint8_t _RegID, uint8_t _RegValue){
 
 /*
 *********************************************************************************************************
+*	name: ADS1256_ReadReg
+*	function: Read  the corresponding register
+*	parameter: _RegID: register  ID
+*	The return value: read register value
+*********************************************************************************************************
+*/
+static uint8_t ADS1256_ReadReg(uint8_t _RegID){
+	uint8_t read;
+
+	CS_0();	/* SPI  cs  = 0 */
+	ADS1256_Send8Bit(CMD_RREG | _RegID);	/* Write command register */
+	ADS1256_Send8Bit(0x00);	/* Write the register number */
+
+	ADS1256_DelayDATA();	/*delay time */
+
+	read = ADS1256_Recive8Bit();	/* Read the register values */
+	CS_1();	/* SPI   cs  = 1 */
+
+	return read;
+}
+
+/*
+*********************************************************************************************************
 *	name: ADS1256_WriteCmd
 *	function: Sending a single byte order
 *	parameter: _cmd : command
@@ -603,13 +626,29 @@ static void ADS1256_WriteCmd(uint8_t _cmd){
 
 /*
 *********************************************************************************************************
-*	name: ADS1256_SetChannel
+*	name: ADS1256_ReadChipID
+*	function: Read the chip ID
+*	parameter: _cmd : NULL
+*	The return value: four high status register
+*********************************************************************************************************
+*/
+uint8_t ADS1256_ReadChipID(void){
+	uint8_t id;
+
+	ADS1256_WaitDRDY();
+	id = ADS1256_ReadReg(REG_STATUS);
+	return (id >> 4);
+}
+
+/*
+*********************************************************************************************************
+*	name: ADS1256_SetChannal
 *	function: Configuration channel number
 *	parameter:  _ch:  channel number  0--7
 *	The return value: NULL
 *********************************************************************************************************
 */
-static void ADS1256_SetChannel(uint8_t _ch){
+static void ADS1256_SetChannal(uint8_t _ch){
 	/*
 	Bits 7-4 PSEL3, PSEL2, PSEL1, PSEL0: Positive Input Channel (AINP) Select
 		0000 = AIN0 (default)
@@ -644,13 +683,13 @@ static void ADS1256_SetChannel(uint8_t _ch){
 
 /*
 *********************************************************************************************************
-*	name: ADS1256_SetDiffChannel
+*	name: ADS1256_SetDiffChannal
 *	function: The configuration difference channel
 *	parameter:  _ch:  channel number  0--3
 *	The return value:  four high status register
 *********************************************************************************************************
 */
-static void ADS1256_SetDiffChannel(uint8_t _ch){
+static void ADS1256_SetDiffChannal(uint8_t _ch){
 	/*
 	Bits 7-4 PSEL3, PSEL2, PSEL1, PSEL0: Positive Input Channel (AINP) Select
 		0000 = AIN0 (default)
@@ -763,9 +802,10 @@ int32_t ADS1256_GetAdc(uint8_t _ch){
 *********************************************************************************************************
 */
 void ADS1256_ISR(void){
-	if (g_tADS1256.ScanMode == 0)	/*  0  Single-ended input  8 channel�� 1 Differential input  4 channel */
+	if (g_tADS1256.ScanMode == 0)	/*  0  Single-ended input  8 channel�� 1 Differential input  4 channe */
 	{
-		ADS1256_SetChannel(g_tADS1256.Channel);	/*Switch channel mode */
+
+		ADS1256_SetChannal(g_tADS1256.Channel);	/*Switch channel mode */
 		bsp_DelayUS(5);
 
 		ADS1256_WriteCmd(CMD_SYNC);
@@ -788,10 +828,10 @@ void ADS1256_ISR(void){
 			g_tADS1256.Channel = 0;
 		}
 	}
-	else	/*DiffChannel*/
+	else	/*DiffChannal*/
 	{
-		
-		ADS1256_SetDiffChannel(g_tADS1256.Channel);	/* change DiffChannel */
+
+		ADS1256_SetDiffChannal(g_tADS1256.Channel);	/* change DiffChannal */
 		bsp_DelayUS(5);
 
 		ADS1256_WriteCmd(CMD_SYNC);
@@ -819,16 +859,15 @@ void ADS1256_ISR(void){
 /*
 *********************************************************************************************************
 *	name: ADS1256_Scan
-*	function: 
+*	function:
 *	parameter:NULL
 *	The return value:  1
 *********************************************************************************************************
 */
 uint8_t ADS1256_Scan(void){
-	
 	if (DRDY_IS_LOW())
 	{
-		ADS1256_ISR();		
+		ADS1256_ISR();
 		return 1;
 	}
 
@@ -884,35 +923,33 @@ void storeVoltage(int32_t Vin){
 *********************************************************************************************************
 */
 static void ADS1256_DispVoltage(void){
+	uint8_t ch_num = 8; //number of channels
+	int32_t adc[ch_num];
+	int32_t volt[ch_num];
 	int32_t Vin;
-	int32_t numChannels = 4;
-	int32_t adc[numChannels];
-	int32_t volt[numChannels];
+	uint8_t i;
 
 	uint8_t buf[3];
-	
-	for(int i = 0; i <= numChannels; i++){
-		while((ADS1256_Scan() == 0));
-	}
-	
-	for(int i = 0; i < 2; i++){
-		adc[i] = ADS1256_GetAdc(i+2); 
+
+	while((ADS1256_Scan() == 0));
+
+	for (i = 0; i < ch_num; i++)
+	{
+		adc[i] = ADS1256_GetAdc(i+6); //+6 to just read the last two channels
 		volt[i] = (adc[i] * 100) / 167;
-		
-		Vin = volt[i] / 8 * ((1000 + 100000) / 1000); /* uV */
-		Vin = Vin * 1.0425; //multiply by error factor
-
-		if (Vin < 0){
-			Vin = -Vin;
-			printf("-%ld.%03ld %03ld V \n", Vin / 1000000, (Vin%1000000)/1000, Vin%1000);
-			storeVoltage(Vin);
-		}
-		else{
-			printf("%ld.%03ld %03ld V \n", Vin / 1000000, (Vin%1000000)/1000, Vin%1000);
-			storeVoltage(Vin);
-		}
 	}
 
+	Vin = (volt[1] - volt[0]) / 8 * ((1000 + 100000) / 1000); /* uV  */
+
+	if (Vin < 0){
+		Vin = -Vin;
+		printf("-%ld.%03ld %03ld V \n", Vin / 1000000, (Vin%1000000)/1000, Vin%1000);
+		storeVoltage(Vin);
+	}
+	else{
+		printf("%ld.%03ld %03ld V \n", Vin / 1000000, (Vin%1000000)/1000, Vin%1000);
+		storeVoltage(Vin);
+	}
 }
 
 /*
@@ -926,7 +963,7 @@ static void ADS1256_DispVoltage(void){
 */
 int  main()
 {
-	int scanMode = 1; // 0 single ended mode : 1 differential mode
+	int mode = 0; //initiallize to LMP90100 data mode
   if (!bcm2835_init())
   	return 1;
 
@@ -937,8 +974,8 @@ int  main()
 	bcm2835_spi_setClockDivider(BCM2835_SPI_CLOCK_DIVIDER_8192);//default
 	bcm2835_aux_spi_setClockDivider(BCM2835_SPI_CLOCK_DIVIDER_2048);//default
 
-	bcm2835_gpio_fsel(SPICS_AUX, BCM2835_GPIO_FSEL_OUTP);//
-	bcm2835_gpio_write(SPICS_AUX, HIGH);
+  bcm2835_gpio_fsel(SPICS_AUX, BCM2835_GPIO_FSEL_OUTP);//
+  bcm2835_gpio_write(SPICS_AUX, HIGH);
 
 	LMP90100_Setup();
 
@@ -948,7 +985,7 @@ int  main()
 	bcm2835_gpio_set_pud(DRDY, BCM2835_GPIO_PUD_UP);
 
 	ADS1256_CfgADC(ADS1256_GAIN_1, ADS1256_15SPS);
-	ADS1256_StartScan(scanMode);
+	ADS1256_StartScan(1);
 
 	while(1)
 	{
@@ -957,10 +994,8 @@ int  main()
 
 		ADS1256_DispVoltage();
 		bsp_DelayUS(1000000);
-		printf("\33[%dA", 3);
 	}
 
-	bcm2835_spi_end();
 	bcm2835_aux_spi_end();
 	bcm2835_close();
 
