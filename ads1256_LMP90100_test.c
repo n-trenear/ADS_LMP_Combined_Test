@@ -898,7 +898,7 @@ static void ADS1256_DispVoltage(void){
 		adc[i] = ADS1256_GetAdc(i+2); 
 		volt[i] = (adc[i] * 100) / 167;
 		
-		Vin = volt[i] / 8 * ((1000 + 100000) / 1000); /* uV */
+		Vin = volt[i] / 8 * ((1500 + 100000) / 1500); /* uV */
 		Vin = Vin * 1.0425; //multiply by error factor
 
 		if (Vin < 0){
