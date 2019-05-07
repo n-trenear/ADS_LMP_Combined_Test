@@ -2,7 +2,7 @@
  * ads1256_LMP90100_test.c
  *
  * Created on: 07/05/2019
- * Author: Nahtan Trenear
+ * Author: Nathan Trenear
 */
 
 /*
