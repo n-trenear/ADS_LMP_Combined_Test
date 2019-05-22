@@ -25,11 +25,17 @@
 */
 #include <bcm2835.h>
 #include <stdio.h>
+#ifndef _MSC_VER
 #include <unistd.h>
+#include <sys/time.h>
+#endif
 #include <string.h>
+#include <stdlib.h>
 #include <math.h>
 #include <errno.h>
 #include <time.h>
+
+#include <modbus.h>
 
 //CS    -----   SPICS
 //DIN     -----   MOSI
@@ -65,7 +71,7 @@
 #define DRDY_AUX_IS_LOW()  (bcm2835_gpio_lev(MISO_AUX)==0)
 #define DRDY_AUX_IS_HIGH() (bcm2835_gpio_lev(MISO_AUX)==1)
 
-typedef enum {FALSE = 0, TRUE = !FALSE} bool;
+typedef enum {FALSEE = 0, TRUEE = !FALSEE} bool;
 
 /* gain channel� */
 typedef enum{
@@ -128,8 +134,6 @@ typedef struct{
 	uint8_t ScanMode;	/*Scanning mode,   0  Single-ended input  8 channel�� 1 Differential input  4 channel*/
 }ADS1256_VAR_T;
 
-
-
 /*Register definition�� Table 23. Register Map --- ADS1256 datasheet Page 30*/
 enum{
 	/*Register address, followed by reset the default values */
@@ -184,9 +188,6 @@ static const uint8_t s_tabDataRate[ADS1256_DRATE_MAX] = {
 	0x13,
 	0x03
 };
-
-
-void bsp_DelayUS(uint64_t micros){bcm2835_delayMicroseconds(micros);}
 
 /*
 *********************************************************************************************************
@@ -246,29 +247,6 @@ static float LMP90100_ReadADC(void)
 
 /*
 *********************************************************************************************************
-*	name: storeTemp
-*	function:  Save temperature reading as csv with time stamp
-*	parameter: Vin : The temperature to be saved
-*
-*	The return value:  NULL
-*********************************************************************************************************
-*/
-void storeTemp(float temp){
-	FILE * fp;
-	fp = fopen ("TemperatureReadings.csv", "a+");
-
-	// store temperature and time
-	time_t t = time(NULL);
-	struct tm tm = *localtime(&t);
-
-	fprintf(fp, "%d-%d-%d %d:%d:%d,%3.1f\n", tm.tm_mday, tm.tm_mon + 1, tm.tm_year + 1900,
-	tm.tm_hour, tm.tm_min, tm.tm_sec, temp);
-
-	fclose(fp);
-}
-
-/*
-*********************************************************************************************************
 *	name: LMP90100_DRDY
 *	function: Detect ADC ready pulse on MISO line and initate ADC read and ADC channel number read
 *	parameter: NULL
@@ -276,26 +254,29 @@ void storeTemp(float temp){
 *	The return value: 1 on success else return 0
 *********************************************************************************************************
 */
-static unsigned int LMP90100_DRDY (void)
+static unsigned int LMP90100_DRDY (modbus_t *ctx)
 {
 	int Channel;
 	float Temp_Reading;
 	int result = 0;
 	static int ctr = 0;
-	//printf("LMP90100_DRDY running \n");
+	uint16_t tab_reg[100];
+	int modbus_register = 3;
+	int rc;
+
 
 	while(!result){
 	if (DRDY_AUX_IS_LOW() && CS_AUX_IS_LOW())
 	{
-	//printf("DRDY AND CS LOW\n");
+
   	if (ctr > 1)
     {
-	//printf("ctr > 1 \n");
-		Temp_Reading = LMP90100_ReadADC();
-		Channel = LMP90100_ReadChannel();
-      //printf("Ch:%02X Temp: %3.1f \r",Channel,Temp_Reading);
-		printf("Ch:%d Temp: %3.1f \n",Channel,Temp_Reading);
-		storeTemp(Temp_Reading);
+			Temp_Reading = LMP90100_ReadADC();
+			Channel = LMP90100_ReadChannel();
+			printf("Ch:%d Temp: %3.1f \n", Channel, Temp_Reading);
+			Temp_Reading = Temp_Reading * 10;
+			tab_reg[0] = (uint16_t) Temp_Reading;
+			rc = modbus_write_registers(ctx, 1000+modbus_register, 1, tab_reg);
       ctr = 0;
       result = 1;
     }
@@ -308,12 +289,10 @@ static unsigned int LMP90100_DRDY (void)
 
 	if (DRDY_AUX_IS_HIGH() && CS_AUX_IS_LOW())
 	{
-		//printf("DRDY high CS low\n");
 		ctr++;
 	}
 	if (DRDY_AUX_IS_HIGH() && CS_AUX_IS_HIGH() && (ctr >= 1))
 	{
-		//printf("DRDY low CS high\n");
 		ctr = 0;
 	}
 }
@@ -324,10 +303,10 @@ static unsigned int LMP90100_DRDY (void)
 /*
 *********************************************************************************************************
 *	name: LMP90100_Setup
-*	function: Detect ADC ready pulse on MISO line and initate ADC read and ADC channel number read
+*	function: Setup LMP90100 to use a 1mA current source and continuously scan all 4 channels
 *	parameter: NULL
 *
-*	The return value: 1 on success else return 0
+*	The return value: NULL
 *********************************************************************************************************
 */
 static void LMP90100_Setup(void){
@@ -364,7 +343,7 @@ static void LMP90100_Setup(void){
 *	The return value: 1 on success else return 0
 *********************************************************************************************************
 */
-static void LMP90100_DispTemp(void){
+static void LMP90100_DispTemp(modbus_t *ctx){
 		unsigned int cs_state = 1;
 
 		//if (LMP90100_DRDY())
@@ -374,14 +353,14 @@ static void LMP90100_DispTemp(void){
 			cs_state = 0;
 		}
 
-		if (LMP90100_DRDY())
+		if (LMP90100_DRDY(ctx))
 		{
 			if (cs_state == 0)
 			{
 				CS_AUX_1();
 				cs_state = 1;
 			}
-			bsp_DelayUS(3000);
+			bcm2835_delayMicroseconds(3000);
 		}
 }
 
@@ -394,7 +373,7 @@ static void LMP90100_DispTemp(void){
 *********************************************************************************************************
 */
 void ADS1256_StartScan(uint8_t _ucScanMode){
-	g_tADS1256.ScanMode = _ucScanMode;
+		g_tADS1256.ScanMode = _ucScanMode;
 
 		uint8_t ch_num;
 
@@ -415,7 +394,7 @@ void ADS1256_StartScan(uint8_t _ucScanMode){
 *********************************************************************************************************
 */
 static void ADS1256_Send8Bit(uint8_t _data){
-	bsp_DelayUS(2);
+	bcm2835_delayMicroseconds(2);
 	bcm2835_spi_transfer(_data);
 }
 
@@ -447,8 +426,8 @@ static void ADS1256_WaitDRDY(void){
 *********************************************************************************************************
 *	name: ADS1256_CfgADC
 *	function: The configuration parameters of ADC, gain and data rate
-*	parameter: _gain:gain 1-64
-*                      _drate:  data  rate
+*	parameter: _gain:  gain 1-64
+*            _drate: data  rate
 *	The return value: NULL
 *********************************************************************************************************
 */
@@ -536,7 +515,7 @@ void ADS1256_CfgADC(ADS1256_GAIN_E _gain, ADS1256_DRATE_E _drate){
 		CS_1();	/* SPI  cs = 1 */
 	}
 
-	bsp_DelayUS(50);
+	bcm2835_delayMicroseconds(50);
 }
 
 /*
@@ -552,7 +531,7 @@ static void ADS1256_DelayDATA(void){
 		Delay from last SCLK edge for DIN to first SCLK rising edge for DOUT: RDATA, RDATAC,RREG Commands
 		min  50   CLK = 50 * 0.13uS = 6.5uS
 	*/
-	bsp_DelayUS(10);	/* The minimum time delay 6.5us */
+	bcm2835_delayMicroseconds(10);	/* The minimum time delay 6.5us */
 }
 
 /*
@@ -573,8 +552,8 @@ static uint8_t ADS1256_Recive8Bit(void){
 *********************************************************************************************************
 *	name: ADS1256_WriteReg
 *	function: Write the corresponding register
-*	parameter: _RegID: register  ID
-*			 _RegValue: register Value
+*	parameter: _RegID:    register  ID
+*			       _RegValue: register Value
 *	The return value: NULL
 *********************************************************************************************************
 */
@@ -599,47 +578,6 @@ static void ADS1256_WriteCmd(uint8_t _cmd){
 	CS_0();	/* SPI   cs = 0 */
 	ADS1256_Send8Bit(_cmd);
 	CS_1();	/* SPI  cs  = 1 */
-}
-
-/*
-*********************************************************************************************************
-*	name: ADS1256_SetChannel
-*	function: Configuration channel number
-*	parameter:  _ch:  channel number  0--7
-*	The return value: NULL
-*********************************************************************************************************
-*/
-static void ADS1256_SetChannel(uint8_t _ch){
-	/*
-	Bits 7-4 PSEL3, PSEL2, PSEL1, PSEL0: Positive Input Channel (AINP) Select
-		0000 = AIN0 (default)
-		0001 = AIN1
-		0010 = AIN2 (ADS1256 only)
-		0011 = AIN3 (ADS1256 only)
-		0100 = AIN4 (ADS1256 only)
-		0101 = AIN5 (ADS1256 only)
-		0110 = AIN6 (ADS1256 only)
-		0111 = AIN7 (ADS1256 only)
-		1xxx = AINCOM (when PSEL3 = 1, PSEL2, PSEL1, PSEL0 are ��don��t care��)
-
-		NOTE: When using an ADS1255 make sure to only select the available inputs.
-
-	Bits 3-0 NSEL3, NSEL2, NSEL1, NSEL0: Negative Input Channel (AINN)Select
-		0000 = AIN0
-		0001 = AIN1 (default)
-		0010 = AIN2 (ADS1256 only)
-		0011 = AIN3 (ADS1256 only)
-		0100 = AIN4 (ADS1256 only)
-		0101 = AIN5 (ADS1256 only)
-		0110 = AIN6 (ADS1256 only)
-		0111 = AIN7 (ADS1256 only)
-		1xxx = AINCOM (when NSEL3 = 1, NSEL2, NSEL1, NSEL0 are ��don��t care��)
-	*/
-	if (_ch > 7)
-	{
-		return;
-	}
-	ADS1256_WriteReg(REG_MUX, (_ch << 4) | (1 << 3));	/* Bit3 = 1, AINN connection AINCOM */
 }
 
 /*
@@ -718,7 +656,7 @@ static int32_t ADS1256_ReadData(void){
     buf[2] = ADS1256_Recive8Bit();
 
     read = ((uint32_t)buf[0] << 16) & 0x00FF0000;
-    read |= ((uint32_t)buf[1] << 8);  /* Pay attention to It is wrong   read |= (buf[1] << 8) */
+    read |= ((uint32_t)buf[1] << 8);
     read |= buf[2];
 
 	CS_1();	/* SPIƬѡ = 1 */
@@ -763,42 +701,14 @@ int32_t ADS1256_GetAdc(uint8_t _ch){
 *********************************************************************************************************
 */
 void ADS1256_ISR(void){
-	if (g_tADS1256.ScanMode == 0)	/*  0  Single-ended input  8 channel�� 1 Differential input  4 channel */
-	{
-		ADS1256_SetChannel(g_tADS1256.Channel);	/*Switch channel mode */
-		bsp_DelayUS(5);
-
-		ADS1256_WriteCmd(CMD_SYNC);
-		bsp_DelayUS(5);
-
-		ADS1256_WriteCmd(CMD_WAKEUP);
-		bsp_DelayUS(25);
-
-		if (g_tADS1256.Channel == 0)
-		{
-			g_tADS1256.AdcNow[7] = ADS1256_ReadData();
-		}
-		else
-		{
-			g_tADS1256.AdcNow[g_tADS1256.Channel-1] = ADS1256_ReadData();
-		}
-
-		if (++g_tADS1256.Channel >= 8)
-		{
-			g_tADS1256.Channel = 0;
-		}
-	}
-	else	/*DiffChannel*/
-	{
-		
 		ADS1256_SetDiffChannel(g_tADS1256.Channel);	/* change DiffChannel */
-		bsp_DelayUS(5);
+		bcm2835_delayMicroseconds(5);
 
 		ADS1256_WriteCmd(CMD_SYNC);
-		bsp_DelayUS(5);
+		bcm2835_delayMicroseconds(5);
 
 		ADS1256_WriteCmd(CMD_WAKEUP);
-		bsp_DelayUS(25);
+		bcm2835_delayMicroseconds(25);
 
 		if (g_tADS1256.Channel == 0)
 		{
@@ -813,13 +723,12 @@ void ADS1256_ISR(void){
 		{
 			g_tADS1256.Channel = 0;
 		}
-	}
 }
 
 /*
 *********************************************************************************************************
 *	name: ADS1256_Scan
-*	function: 
+*	function:
 *	parameter:NULL
 *	The return value:  1
 *********************************************************************************************************
@@ -827,7 +736,7 @@ void ADS1256_ISR(void){
 uint8_t ADS1256_Scan(void){
 	if (DRDY_IS_LOW())
 	{
-		ADS1256_ISR();		
+		ADS1256_ISR();
 		return 1;
 	}
 
@@ -836,82 +745,55 @@ uint8_t ADS1256_Scan(void){
 
 /*
 *********************************************************************************************************
-*	name: Voltage_Convert
-*	function:  Voltage value conversion function
-*	parameter: Vref : The reference voltage 3.3V or 5V
-*			   voltage : output DAC value
-*	The return value:  NULL
-*********************************************************************************************************
-*/
-uint16_t Voltage_Convert(float Vref, float voltage){
-	uint16_t _D_;
-	_D_ = (uint16_t)(65536 * voltage / Vref);
-
-	return _D_;
-}
-
-/*
-*********************************************************************************************************
-*	name: storeVoltage
-*	function:  Save voltage reading as csv with time stamp
-*	parameter: Vin : The voltage to be saved
-*
-*	The return value:  NULL
-*********************************************************************************************************
-*/
-void storeVoltage(int32_t Vin){
-	FILE * fp;
-	fp = fopen ("VoltageReadings.csv", "a+");
-
-	// store temperature and time
-	time_t t = time(NULL) + 36000; //current time in seconds adding 10 hours
-	struct tm tm = *localtime(&t);
-
-	fprintf(fp, "%d-%d-%d %d:%d:%d,%ld.%03ld\n", tm.tm_mday, tm.tm_mon + 1, tm.tm_year + 1900,
-	tm.tm_hour, tm.tm_min, tm.tm_sec, Vin / 1000000, (Vin%1000000)/1000);
-
-	fclose(fp);
-}
-
-/*
-*********************************************************************************************************
 *	name: ADS1256_DispVoltage
-*	function:  display voltage to terminal
+*	function:  display voltage to terminal and send via modbus
 *	parameter: NULL
 *
 *	The return value:  NULL
 *********************************************************************************************************
 */
-static void ADS1256_DispVoltage(void){
+static void ADS1256_DispVoltage(modbus_t *ctx){
 	int32_t Vin;
 	int32_t numChannels = 4;
 	int32_t adc[numChannels];
 	int32_t volt[numChannels];
+	uint16_t tab_reg[100];
+	int rc;
 
 	uint8_t buf[3];
-	
+
+	//Read the values at all four channels
 	for(int i = 0; i <= numChannels; i++){
 		while((ADS1256_Scan() == 0));
 	}
-	
+
 	for(int i = 0; i < 2; i++){
-		adc[i] = ADS1256_GetAdc(i+2); 
+		adc[i] = ADS1256_GetAdc(i+2);
 		volt[i] = (adc[i] * 100) / 167;
-		
+
 		Vin = volt[i] / 8 * ((1500 + 100000) / 1500); /* uV */
 		Vin = Vin * 1.0425; //multiply by error factor
 
 		if (Vin < 0){
 			Vin = -Vin;
 			printf("-%ld.%03ld %03ld V \n", Vin / 1000000, (Vin%1000000)/1000, Vin%1000);
-			storeVoltage(Vin);
+			Vin = Vin/100000;
+			tab_reg[0] = (uint16_t) Vin;
+			rc = modbus_write_registers(ctx, 1001+i, 1, tab_reg);
+			if(rc == -1){
+				fprintf(stderr,"%s\n", modbus_strerror(errno));
+			}
 		}
 		else{
 			printf("%ld.%03ld %03ld V \n", Vin / 1000000, (Vin%1000000)/1000, Vin%1000);
-			storeVoltage(Vin);
+			Vin = Vin/100000;
+			tab_reg[0] = (uint16_t) Vin;
+			rc = modbus_write_registers(ctx, 1001+i, 1, tab_reg);
+			if(rc == -1){
+				fprintf(stderr,"%s\n", modbus_strerror(errno));
+			}
 		}
 	}
-
 }
 
 /*
@@ -925,7 +807,10 @@ static void ADS1256_DispVoltage(void){
 */
 int  main()
 {
-	int scanMode = 1; // 0 single ended mode : 1 differential mode
+	int scanMode = 1; // Set scan mode to differential inputs.
+	clock_t start_t, end_t, total_t;
+	modbus_t *ctx;
+
   if (!bcm2835_init())
   	return 1;
 
@@ -949,19 +834,33 @@ int  main()
 	ADS1256_CfgADC(ADS1256_GAIN_1, ADS1256_15SPS);
 	ADS1256_StartScan(scanMode);
 
+	ctx = modbus_new_tcp("192.168.1.218", 502); //connect to dev board ip
+	if (ctx == NULL){
+		fprintf(stderr,"Unable to allocate libmodbus context\n");
+		return -1;
+	}
+
+	if(modbus_connect(ctx) == -1){
+		fprintf(stderr,"Connection failed: %s\n",modbus_strerror(errno));
+		modbus_free(ctx);
+		return -1;
+	}
+
 	while(1)
 	{
-		LMP90100_DispTemp();
-		bsp_DelayUS(1000000);
+		LMP90100_DispTemp(ctx);
+		bcm2835_delayMicroseconds(1000000);
 
-		ADS1256_DispVoltage();
-		bsp_DelayUS(1000000);
+		ADS1256_DispVoltage(ctx);
+		bcm2835_delayMicroseconds(1000000);
 		printf("\33[%dA", 3);
 	}
 
 	bcm2835_spi_end();
 	bcm2835_aux_spi_end();
 	bcm2835_close();
+	modbus_close(ctx);
+	modbus_free(ctx);
 
 	return 0;
 }
